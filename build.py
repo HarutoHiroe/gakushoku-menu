@@ -368,6 +368,9 @@ TEMPLATE = r"""<!DOCTYPE html>
     background: rgba(255,255,255,.1); color: #fff;
   }
   .budget-bar .preset { cursor: pointer; text-decoration: underline; opacity: .75; margin-left: 8px; }
+  .half-toggle { display: inline-block; margin-left: 14px; cursor: pointer; user-select: none; padding: 5px 12px; border-radius: 999px; background: rgba(255,80,80,.18); border: 1px solid rgba(255,120,120,.45); font-weight: 600; }
+  .half-toggle input { vertical-align: middle; margin-right: 3px; }
+  .half-on { text-align: center; font-weight: 800; color: #ffd0d0; background: linear-gradient(135deg, rgba(255,70,70,.35), rgba(255,120,60,.3)); border-radius: 12px; padding: 8px; margin: 16px 0 4px; }
   .tabs { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: 16px; }
   .tab {
     border: none; cursor: pointer; font-size: .95rem; font-weight: 600;
@@ -431,6 +434,7 @@ TEMPLATE = r"""<!DOCTYPE html>
   <span class="preset" data-v="740">学食パス740</span>
   <span class="preset" data-v="980">🌟高級980</span>
   <span class="preset" data-v="600">節約600</span>
+  <label class="half-toggle"><input type="checkbox" id="half">🉐半額week</label>
 </div>
 <div class="tabs" id="tabs"></div>
 <div id="panels"></div>
@@ -564,8 +568,8 @@ DATA.shops.forEach((s) => {
   ).join('');
   const dayViews = s.days.map((dy, i) =>
     '<div class="dayview" data-day="' + i + '"' + (i === 0 ? '' : ' hidden') + '>' +
-      cardsHtml(dy.images) + nutritionTable(dy.dishes) +
-      (dy.dishes.length ? '<div class="combo-box" id="combo-' + s.key + '-' + i + '"></div>' : '') +
+      cardsHtml(dy.images) +
+      (dy.dishes.length ? '<div class="dyn" id="dyn-' + s.key + '-' + i + '"></div>' : '') +
     '</div>'
   ).join('');
   panel.innerHTML = '<h2>' + s.emoji + ' ' + s.name + '</h2>' +
@@ -579,18 +583,31 @@ DATA.shops.forEach((s) => {
   panels.appendChild(panel);
 });
 
-function renderCombos(){
-  const budget = parseInt(document.getElementById('budget').value) || 740;
-  DATA.shops.forEach((s) => s.days.forEach((dy, i) => {
-    const el = document.getElementById('combo-' + s.key + '-' + i);
-    if (el) el.innerHTML = comboHtml(dy.dishes, budget);
+function applyHalf(dishes){
+  // 🉐半額week: 全品50%OFF（menu CLI の apply_discount 相当）
+  return dishes.map((d) => ({
+    ...d,
+    price: Math.max(0, Math.round(d.price / 2)),
+    sizes: Object.fromEntries(Object.entries(d.sizes || {}).map(([k, v]) => [k, Math.max(0, Math.round(v / 2))])),
   }));
 }
-document.getElementById('budget').addEventListener('input', renderCombos);
+function renderAll(){
+  const budget = parseInt(document.getElementById('budget').value) || 740;
+  const half = document.getElementById('half').checked;
+  DATA.shops.forEach((s) => s.days.forEach((dy, i) => {
+    const el = document.getElementById('dyn-' + s.key + '-' + i);
+    if (!el) return;
+    const dishes = half ? applyHalf(dy.dishes) : dy.dishes;
+    el.innerHTML = (half ? '<div class="half-on">🉐 半額week適用中！ 全品50%OFFで計算中</div>' : '') +
+      nutritionTable(dishes) + comboHtml(dishes, budget);
+  }));
+}
+document.getElementById('budget').addEventListener('input', renderAll);
+document.getElementById('half').addEventListener('change', renderAll);
 document.querySelectorAll('.budget-bar .preset').forEach((p) => {
-  p.onclick = () => { document.getElementById('budget').value = p.dataset.v; renderCombos(); };
+  p.onclick = () => { document.getElementById('budget').value = p.dataset.v; renderAll(); };
 });
-renderCombos();
+renderAll();
 
 function show(key) {
   if (!DATA.shops.some((s) => s.key === key)) key = DATA.shops[0].key;
