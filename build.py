@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-"""学食メニュー有志サイト ビルダー（自己完結版）
+"""学食メニュー有志サイト ビルダー（1週間表示・自己完結版）
 本家を「トップGET(セッション確立) → shop_id POST → current_dayを変えてGET」で
-スクレイプし、3キャンパス×(今日/明日)のメニュー画像URLを埋め込んだ
+スクレイプし、3キャンパス×7日分(今日〜6日後)のメニュー画像URLを埋め込んだ
 自己完結 index.html を生成する。
+
+複数日に共通で出る画像(週案内など)は「お知らせ」として分離し、
+各日には日替わりメニューだけを表示する。
 
 依存は httpx と beautifulsoup4 のみ（menu CLI には依存しない＝GitHub Actionsでも動く）。
 ローカル実行: ~/.local/menu-venv/bin/python3 build.py
@@ -10,6 +13,7 @@
 import json
 import ssl
 import sys
+import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
@@ -20,6 +24,8 @@ UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 BASE = ("https://signage.univcoop-tokai.net/smt_menu_ants2/view_list.php"
         "?uv=13&current_day=0&current_page=no_page")
+DAYS = 7  # 今日を含む表示日数
+WD = "月火水木金土日"
 
 SHOPS = [
     {"key": "pacchia",  "id": "29",  "name": "半田キャンパス パッキア", "emoji": "🏫"},
@@ -53,19 +59,33 @@ def parse_image_urls(html):
 
 
 def fetch_all():
+    jst = timezone(timedelta(hours=9))
+    today = datetime.now(jst).date()
     with httpx.Client(verify=_ctx, timeout=30, follow_redirects=True,
                       headers={"User-Agent": UA, "Accept-Language": "ja-JP"}) as c:
         c.get(BASE)  # ① セッション確立(Set-Cookie)
-        url_tomorrow = BASE.replace("current_day=0", "current_day=1")
         for shop in SHOPS:
-            rp = c.post(BASE, data={  # ② 店舗をPOST → 今日のメニュー
+            rp = c.post(BASE, data={  # ② 店舗をPOST → 今日(day0)
                 "shop_id": shop["id"], "client_id": "13", "shop_name": shop["name"],
             })
-            shop["today"] = parse_image_urls(rp.text)
-            r1 = c.get(url_tomorrow)  # ③ 同セッションで明日をGET
-            shop["tomorrow"] = parse_image_urls(r1.text)
-            print(f"  {shop['emoji']} {shop['name']}: "
-                  f"今日{len(shop['today'])}枚 / 明日{len(shop['tomorrow'])}枚", file=sys.stderr)
+            raw = {0: parse_image_urls(rp.text)}
+            for d in range(1, DAYS):  # ③ 同セッションで各日をGET
+                u = BASE.replace("current_day=0", f"current_day={d}")
+                raw[d] = parse_image_urls(c.get(u).text)
+                time.sleep(0.2)  # 本家への負荷配慮
+
+            # 各日、本家が掲示している画像をそのまま表示（誤判定で消さない）
+            shop["days"] = []
+            menu_count = 0
+            for d in range(DAYS):
+                dt = today + timedelta(days=d)
+                imgs = raw[d]
+                menu_count += len(imgs)
+                shop["days"].append({
+                    "date": f"{dt.month}/{dt.day}", "wday": WD[dt.weekday()],
+                    "weekend": dt.weekday() >= 5, "images": imgs,
+                })
+            print(f"  {shop['emoji']} {shop['name']}: 画像 計{menu_count}枚", file=sys.stderr)
     return SHOPS
 
 
@@ -97,13 +117,23 @@ TEMPLATE = r"""<!DOCTYPE html>
   .panel.active { display: block; animation: fade .25s ease; }
   @keyframes fade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
   .panel h2 { text-align: center; font-size: 1.15rem; margin-bottom: 12px; opacity: .92; }
-  .daytabs { display: flex; gap: 6px; justify-content: center; margin-bottom: 16px; }
-  .daytab {
-    border: 1px solid rgba(255,255,255,.18); cursor: pointer; font-size: .85rem; font-weight: 600;
-    padding: 7px 18px; border-radius: 999px; color: #d9c9ff; background: transparent; transition: .15s;
+  .notice { background: rgba(255,255,255,.05); border-radius: 14px; padding: 12px; margin-bottom: 16px; }
+  .notice-h { font-size: .8rem; opacity: .65; margin-bottom: 8px; text-align: center; }
+  .notice img { max-width: 100%; border-radius: 10px; display: block; margin: 0 auto; }
+  .daytabs {
+    display: flex; gap: 6px; margin-bottom: 16px; overflow-x: auto;
+    padding-bottom: 6px; -webkit-overflow-scrolling: touch; scrollbar-width: thin;
   }
+  .daytab {
+    flex: 0 0 auto; border: 1px solid rgba(255,255,255,.18); cursor: pointer;
+    font-size: .82rem; font-weight: 600; padding: 7px 13px; border-radius: 14px;
+    color: #d9c9ff; background: transparent; transition: .15s; line-height: 1.25; text-align: center;
+  }
+  .daytab small { display: block; opacity: .7; font-size: .72em; font-weight: 500; }
   .daytab:hover { background: rgba(255,255,255,.1); }
+  .daytab.weekend { color: #ff9ed8; }
   .daytab.active { background: rgba(255,255,255,.92); color: #3a1d5e; border-color: transparent; }
+  .daytab.active small { opacity: .85; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
   .card {
     background: rgba(255,255,255,.06); border-radius: 18px; overflow: hidden;
@@ -139,13 +169,12 @@ document.querySelector('.updated').textContent = '取得: ' + DATA.updated;
 
 function cardsHtml(images) {
   if (!images.length) {
-    return '<div class="empty">🈳 まだメニュー画像がないみたい<br>（未掲載 / 準備中かも。少し待ってね）</div>';
+    return '<div class="empty">🈚 この日はメニューがないみたい<br>（土日・休業日 / まだ未掲載かも）</div>';
   }
   return '<div class="grid">' + images.map((u) =>
     '<a class="card" href="' + u + '" target="_blank" rel="noopener"><img loading="lazy" src="' + u + '" alt="menu"></a>'
   ).join('') + '</div>';
 }
-
 DATA.shops.forEach((s) => {
   const btn = document.createElement('button');
   btn.className = 'tab'; btn.dataset.key = s.key;
@@ -155,14 +184,15 @@ DATA.shops.forEach((s) => {
 
   const panel = document.createElement('div');
   panel.className = 'panel'; panel.id = 'panel-' + s.key;
-  panel.innerHTML =
-    '<h2>' + s.emoji + ' ' + s.name + '</h2>' +
-    '<div class="daytabs">' +
-      '<button class="daytab active" data-day="today">📅 今日</button>' +
-      '<button class="daytab" data-day="tomorrow">➡️ 明日</button>' +
-    '</div>' +
-    '<div class="dayview" data-day="today">' + cardsHtml(s.today) + '</div>' +
-    '<div class="dayview" data-day="tomorrow" hidden>' + cardsHtml(s.tomorrow) + '</div>';
+  const dayTabs = s.days.map((dy, i) =>
+    '<button class="daytab' + (i === 0 ? ' active' : '') + (dy.weekend ? ' weekend' : '') +
+    '" data-day="' + i + '">' + dy.date + '<small>' + dy.wday + '</small></button>'
+  ).join('');
+  const dayViews = s.days.map((dy, i) =>
+    '<div class="dayview" data-day="' + i + '"' + (i === 0 ? '' : ' hidden') + '>' + cardsHtml(dy.images) + '</div>'
+  ).join('');
+  panel.innerHTML = '<h2>' + s.emoji + ' ' + s.name + '</h2>' +
+    '<div class="daytabs">' + dayTabs + '</div>' + dayViews;
   panel.querySelectorAll('.daytab').forEach((b) => {
     b.onclick = () => {
       panel.querySelectorAll('.daytab').forEach((x) => x.classList.toggle('active', x === b));
@@ -191,7 +221,7 @@ def main():
     payload = {
         "updated": datetime.now(jst).strftime("%Y-%m-%d %H:%M JST"),
         "shops": [{"key": s["key"], "name": s["name"], "emoji": s["emoji"],
-                   "today": s["today"], "tomorrow": s["tomorrow"]} for s in shops],
+                   "days": s["days"]} for s in shops],
     }
     out = Path(__file__).resolve().parent / "index.html"
     out.write_text(TEMPLATE.replace("__DATA__", json.dumps(payload, ensure_ascii=False)),
