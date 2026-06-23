@@ -533,6 +533,7 @@ function suggestCombos(dishes, budget, onlySize, topN=3, maxItems=4){
       if(new Set(bases).size!==bases.length) continue;
       const price=combo.reduce((s,d)=>s+d.price,0);
       if(price>budget) continue;
+      if(combo.filter((d)=>CARB.includes(d.category)).length > 1) continue;  // ご飯もの(丼/麺/ご飯)は1つまで＝丼+ライス等の重複を防ぐ
       if(r===1 && SOLO_NG.includes(combo[0].category)) continue;
       const energy=combo.reduce((s,d)=>s+(d.energy||0),0);
       const protein=combo.reduce((s,d)=>s+(d.protein||0),0);
