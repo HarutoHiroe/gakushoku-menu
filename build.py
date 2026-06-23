@@ -134,7 +134,7 @@ TEMPLATE = r"""<!DOCTYPE html>
   .daytab.weekend { color: #ff9ed8; }
   .daytab.active { background: rgba(255,255,255,.92); color: #3a1d5e; border-color: transparent; }
   .daytab.active small { opacity: .85; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 360px)); gap: 16px; justify-content: center; }
   .card {
     background: rgba(255,255,255,.06); border-radius: 18px; overflow: hidden;
     box-shadow: 0 8px 24px rgba(0,0,0,.3); transition: transform .15s;
