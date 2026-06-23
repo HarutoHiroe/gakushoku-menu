@@ -429,8 +429,8 @@ TEMPLATE = r"""<!DOCTYPE html>
 <div class="budget-bar">
   🎫 予算 ¥<input type="number" id="budget" value="740" min="100" step="10">
   <span class="preset" data-v="740">学食パス740</span>
-  <span class="preset" data-v="600">600</span>
-  <span class="preset" data-v="1000">1000</span>
+  <span class="preset" data-v="980">🌟高級980</span>
+  <span class="preset" data-v="600">節約600</span>
 </div>
 <div class="tabs" id="tabs"></div>
 <div id="panels"></div>
