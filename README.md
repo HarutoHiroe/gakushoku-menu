@@ -2,7 +2,7 @@
 
 日本福祉大学の学食メニューを、キャンパス選択なしでサッと見れる非公式ページ。
 
-**公開URL**: https://harutohiroe.github.io/gakushoku-menu/
+**公開URL**: https://larhalt0515.github.io/gakushoku-menu/
 
 - 🏫 半田パッキア → `#pacchia`
 - 🌊 美浜 食菜 → `#shokusai`
