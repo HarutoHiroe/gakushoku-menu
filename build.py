@@ -410,6 +410,7 @@ TEMPLATE = r"""<!DOCTYPE html>
   table.nut td:first-child { white-space: normal; min-width: 120px; }
   .size-sel { display: inline-block; margin-left: 12px; }
   .size-sel select { background: rgba(255,255,255,.12); color: #fff; border: 1px solid rgba(255,255,255,.28); border-radius: 8px; padding: 4px 7px; font-size: .85rem; }
+  .dessert-toggle { background: rgba(255,180,80,.18) !important; border-color: rgba(255,200,100,.5) !important; }
   table.nut tr:hover td { background: rgba(255,255,255,.05); }
   .nut-cat { color: #c9b6ff; }
   .total { text-align: right; font-size: .76rem; opacity: .65; margin-top: 6px; }
@@ -445,6 +446,7 @@ TEMPLATE = r"""<!DOCTYPE html>
     <option value="中">中で固定</option>
     <option value="大">大で固定</option>
   </select></span>
+  <label class="half-toggle dessert-toggle"><input type="checkbox" id="dessert">🍰デザート込み</label>
 </div>
 <div class="tabs" id="tabs"></div>
 <div id="panels"></div>
@@ -544,9 +546,32 @@ function suggestCombos(dishes, budget, onlySize, topN=3, maxItems=4){
   all.sort((a,b)=> a.diff-b.diff || (b.balanced-a.balanced) || (b.energy-a.energy));
   return all.slice(0,topN);
 }
-function comboHtml(dishes, budget, onlySize){
+function suggestCombosWithDessert(dishes, budget, onlySize, topN=3){
+  // デザートを先打ちで1品決め、残った予算で食事を最適化（ハル案：全列挙より軽い）
+  const desserts = dishes.filter((d) => d.category === 'デザート');
+  const meals = dishes.filter((d) => d.category !== 'デザート');
+  if(!desserts.length) return suggestCombos(dishes, budget, onlySize, topN);
+  const out = [];
+  for(const dst of desserts){
+    if(dst.price > budget) continue;
+    const best = suggestCombos(meals, budget - dst.price, onlySize, 1)[0];  // 残予算で食事ベスト1
+    if(!best) continue;
+    const dv = {name:dst.name, price:dst.price, energy:num(dst.energy), protein:num(dst.protein),
+                fat:num(dst.fat), carb:num(dst.carb), category:dst.category, base:dst.name};
+    const combo = [...best.combo, dv];
+    const price = best.price + dst.price;
+    out.push({combo, price, diff:budget-price,
+              energy:best.energy+(dv.energy||0), protein:best.protein+(dv.protein||0),
+              fat:best.fat+(dv.fat||0), carb:best.carb+(dv.carb||0),
+              balanced:combo.some((d)=>MAIN.includes(d.category)),
+              hasCarb:combo.some((d)=>CARB.includes(d.category))});
+  }
+  out.sort((a,b)=> a.diff-b.diff || (b.balanced-a.balanced) || (b.energy-a.energy));
+  return out.slice(0,topN);
+}
+function comboHtml(dishes, budget, onlySize, withDessert){
   if(!dishes.length) return '';
-  const cs=suggestCombos(dishes,budget,onlySize);
+  const cs = withDessert ? suggestCombosWithDessert(dishes,budget,onlySize) : suggestCombos(dishes,budget,onlySize);
   let body;
   if(!cs.length){
     body='<div class="combo-empty">¥'+budget+'以内の組み合わせが見つからなかった〜！予算を上げてみて</div>';
@@ -562,7 +587,8 @@ function comboHtml(dishes, budget, onlySize){
     }).join('');
   }
   const sztag = onlySize ? '（🍚'+onlySize+'固定）' : '';
-  return '<div class="sec-h">🎫 予算 ¥<span class="bv">'+budget+'</span> スレスレ最適化 TOP3'+sztag+'</div>'+body;
+  const dtag = withDessert ? '（🍰デザート込み）' : '';
+  return '<div class="sec-h">🎫 予算 ¥<span class="bv">'+budget+'</span> スレスレ最適化 TOP3'+sztag+dtag+'</div>'+body;
 }
 
 DATA.shops.forEach((s) => {
@@ -607,17 +633,19 @@ function renderAll(){
   const budget = parseInt(document.getElementById('budget').value) || 740;
   const half = document.getElementById('half').checked;
   const onlySize = document.getElementById('rsize').value || null;
+  const withDessert = document.getElementById('dessert').checked;
   DATA.shops.forEach((s) => s.days.forEach((dy, i) => {
     const el = document.getElementById('dyn-' + s.key + '-' + i);
     if (!el) return;
     const dishes = half ? applyHalf(dy.dishes) : dy.dishes;
     el.innerHTML = (half ? '<div class="half-on">🉐 半額week適用中！ 全品50%OFFで計算中</div>' : '') +
-      nutritionTable(dishes) + comboHtml(dishes, budget, onlySize);
+      nutritionTable(dishes) + comboHtml(dishes, budget, onlySize, withDessert);
   }));
 }
 document.getElementById('budget').addEventListener('input', renderAll);
 document.getElementById('half').addEventListener('change', renderAll);
 document.getElementById('rsize').addEventListener('change', renderAll);
+document.getElementById('dessert').addEventListener('change', renderAll);
 document.querySelectorAll('.budget-bar .preset').forEach((p) => {
   p.onclick = () => { document.getElementById('budget').value = p.dataset.v; renderAll(); };
 });
