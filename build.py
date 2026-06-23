@@ -401,11 +401,15 @@ TEMPLATE = r"""<!DOCTYPE html>
   .card img { width: 100%; display: block; background: #fff; }
   .empty { text-align: center; padding: 40px 16px; opacity: .7; line-height: 1.8; background: rgba(255,255,255,.05); border-radius: 18px; }
   .sec-h { font-size: .82rem; opacity: .7; margin: 20px 0 8px; font-weight: 700; }
-  table.nut { width: 100%; border-collapse: collapse; font-size: .8rem; background: rgba(255,255,255,.04); border-radius: 12px; overflow: hidden; }
+  .nut-wrap { overflow-x: auto; border-radius: 12px; -webkit-overflow-scrolling: touch; }
+  table.nut { width: 100%; min-width: 480px; border-collapse: collapse; font-size: .8rem; background: rgba(255,255,255,.04); }
   table.nut th { background: rgba(255,255,255,.1); padding: 7px 8px; text-align: right; font-weight: 600; white-space: nowrap; }
   table.nut th:first-child, table.nut td:first-child { text-align: left; }
   table.nut th:nth-child(2), table.nut td:nth-child(2) { text-align: center; }
-  table.nut td { padding: 6px 8px; text-align: right; border-top: 1px solid rgba(255,255,255,.06); }
+  table.nut td { padding: 6px 8px; text-align: right; border-top: 1px solid rgba(255,255,255,.06); white-space: nowrap; }
+  table.nut td:first-child { white-space: normal; min-width: 120px; }
+  .size-sel { display: inline-block; margin-left: 12px; }
+  .size-sel select { background: rgba(255,255,255,.12); color: #fff; border: 1px solid rgba(255,255,255,.28); border-radius: 8px; padding: 4px 7px; font-size: .85rem; }
   table.nut tr:hover td { background: rgba(255,255,255,.05); }
   .nut-cat { color: #c9b6ff; }
   .total { text-align: right; font-size: .76rem; opacity: .65; margin-top: 6px; }
@@ -435,6 +439,12 @@ TEMPLATE = r"""<!DOCTYPE html>
   <span class="preset" data-v="980">🌟高級980</span>
   <span class="preset" data-v="600">節約600</span>
   <label class="half-toggle"><input type="checkbox" id="half">🉐半額week</label>
+  <span class="size-sel">🍚<select id="rsize">
+    <option value="">サイズおまかせ</option>
+    <option value="小">小で固定</option>
+    <option value="中">中で固定</option>
+    <option value="大">大で固定</option>
+  </select></span>
 </div>
 <div class="tabs" id="tabs"></div>
 <div id="panels"></div>
@@ -478,19 +488,20 @@ function nutritionTable(dishes){
   }).join('');
   const tp = dishes.reduce((s,d)=>s+d.price,0);
   const tk = dishes.reduce((s,d)=>s+(num(d.energy)||0),0);
-  return '<div class="sec-h">📋 栄養一覧</div><table class="nut"><thead><tr>'+
+  return '<div class="sec-h">📋 栄養一覧</div><div class="nut-wrap"><table class="nut"><thead><tr>'+
     '<th>料理</th><th>区分</th><th>価格</th><th>kcal</th><th>P</th><th>F</th><th>C</th></tr></thead>'+
-    '<tbody>'+rows+'</tbody></table>'+
+    '<tbody>'+rows+'</tbody></table></div>'+
     '<div class="total">全'+dishes.length+'品 / 全部頼むと ¥'+tp+'（'+tk+'kcal）</div>'+
     '<div class="total" style="opacity:.5">価格が複数値の料理は 小/中/大（kcal等は中基準）</div>';
 }
 
-function expandSizes(dishes){
+function expandSizes(dishes, onlySize){
   const out=[];
   for(const d of dishes){
     const sizes = (d.sizes && Object.keys(d.sizes).length) ? d.sizes : {"並": d.price};
     const multi = Object.keys(sizes).length>1;
     for(const [sz,price] of Object.entries(sizes).sort((a,b)=>(SIZE_ORDER[a[0]]??9)-(SIZE_ORDER[b[0]]??9))){
+      if(onlySize && multi && sz!==onlySize) continue;  // サイズ固定（指定サイズ以外は除外）
       const [dk,dc] = SIZE_RICE_DELTA[sz]||[0,0];
       let e=num(d.energy), c=num(d.carb);
       if(multi && e!=null) e=Math.max(0,e+dk);
@@ -512,8 +523,8 @@ function* combinations(arr,r){
     idx[i]++; for(let j=i+1;j<r;j++) idx[j]=idx[j-1]+1;
   }
 }
-function suggestCombos(dishes, budget, topN=3, maxItems=4){
-  const v = expandSizes(dishes), all=[];
+function suggestCombos(dishes, budget, onlySize, topN=3, maxItems=4){
+  const v = expandSizes(dishes, onlySize), all=[];
   for(let r=1;r<=Math.min(v.length,maxItems);r++){
     for(const combo of combinations(v,r)){
       const bases=combo.map(d=>d.base);
@@ -533,9 +544,9 @@ function suggestCombos(dishes, budget, topN=3, maxItems=4){
   all.sort((a,b)=> a.diff-b.diff || (b.balanced-a.balanced) || (b.energy-a.energy));
   return all.slice(0,topN);
 }
-function comboHtml(dishes, budget){
+function comboHtml(dishes, budget, onlySize){
   if(!dishes.length) return '';
-  const cs=suggestCombos(dishes,budget);
+  const cs=suggestCombos(dishes,budget,onlySize);
   let body;
   if(!cs.length){
     body='<div class="combo-empty">¥'+budget+'以内の組み合わせが見つからなかった〜！予算を上げてみて</div>';
@@ -550,7 +561,8 @@ function comboHtml(dishes, budget){
         '<div class="combo-badge">'+b+'</div></div>';
     }).join('');
   }
-  return '<div class="sec-h">🎫 予算 ¥<span class="bv">'+budget+'</span> スレスレ最適化 TOP3</div>'+body;
+  const sztag = onlySize ? '（🍚'+onlySize+'固定）' : '';
+  return '<div class="sec-h">🎫 予算 ¥<span class="bv">'+budget+'</span> スレスレ最適化 TOP3'+sztag+'</div>'+body;
 }
 
 DATA.shops.forEach((s) => {
@@ -594,16 +606,18 @@ function applyHalf(dishes){
 function renderAll(){
   const budget = parseInt(document.getElementById('budget').value) || 740;
   const half = document.getElementById('half').checked;
+  const onlySize = document.getElementById('rsize').value || null;
   DATA.shops.forEach((s) => s.days.forEach((dy, i) => {
     const el = document.getElementById('dyn-' + s.key + '-' + i);
     if (!el) return;
     const dishes = half ? applyHalf(dy.dishes) : dy.dishes;
     el.innerHTML = (half ? '<div class="half-on">🉐 半額week適用中！ 全品50%OFFで計算中</div>' : '') +
-      nutritionTable(dishes) + comboHtml(dishes, budget);
+      nutritionTable(dishes) + comboHtml(dishes, budget, onlySize);
   }));
 }
 document.getElementById('budget').addEventListener('input', renderAll);
 document.getElementById('half').addEventListener('change', renderAll);
+document.getElementById('rsize').addEventListener('change', renderAll);
 document.querySelectorAll('.budget-bar .preset').forEach((p) => {
   p.onclick = () => { document.getElementById('budget').value = p.dataset.v; renderAll(); };
 });
