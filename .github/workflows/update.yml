@@ -2,8 +2,8 @@ name: update-menu
 
 on:
   schedule:
-    # UTC指定。JST 9:00 / 12:00 / 15:00 に相当（本家への負荷を抑え1日3回）
-    - cron: "0 0,3,6 * * *"
+    # UTC指定。JST 10:00 / 16:00 に相当（1日2回）
+    - cron: "0 1,7 * * *"
   workflow_dispatch: {}   # 手動実行ボタンも有効化
 
 permissions:
