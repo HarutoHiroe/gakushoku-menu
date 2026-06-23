@@ -547,30 +547,33 @@ function suggestCombos(dishes, budget, onlySize, topN=3, maxItems=4){
   all.sort((a,b)=> a.diff-b.diff || (b.balanced-a.balanced) || (b.energy-a.energy));
   return all.slice(0,topN);
 }
-function comboHtml(dishes, budget, onlySize, chosen){
+function comboHtml(dishes, budget, onlySize, rice, dessert){
   if(!dishes.length) return '';
+  // 選んだご飯もの/デザートを先打ち確定 → 残予算で残りを最適化（指定は反映しつつ最適化も保つ）
+  const picks = [rice, dessert].filter(Boolean);
+  const pickPrice = picks.reduce((s,d)=>s+d.price,0);
+  let pool = dishes;
+  if(rice) pool = pool.filter(d=>!CARB.includes(d.category));   // ご飯ものを指定→他の主食を除外
+  if(dessert) pool = pool.filter(d=>d.category!=='デザート');    // デザートを指定→デザート除外
   let cs;
-  if(chosen){
-    // 選んだデザートを先打ち確定 → 残予算で食事ベスト3を最適化（リア友案）
-    const meals = dishes.filter((d) => d.category !== 'デザート');
-    const rem = budget - chosen.price;
-    cs = (rem >= 0 ? suggestCombos(meals, rem, onlySize, 3) : []).map((best) => {
-      const dv = {name:chosen.name, price:chosen.price, energy:num(chosen.energy), protein:num(chosen.protein),
-                  fat:num(chosen.fat), carb:num(chosen.carb), category:chosen.category, base:chosen.name};
-      const combo = [...best.combo, dv];
-      const price = best.price + dv.price;
-      return {combo, price, diff:budget-price,
-              energy:best.energy+(dv.energy||0), protein:best.protein+(dv.protein||0),
-              fat:best.fat+(dv.fat||0), carb:best.carb+(dv.carb||0),
-              balanced:combo.some((d)=>MAIN.includes(d.category)),
-              hasCarb:combo.some((d)=>CARB.includes(d.category))};
-    });
+  if(pickPrice > budget){
+    cs = [];
   } else {
-    cs = suggestCombos(dishes, budget, onlySize, 3);
+    cs = suggestCombos(pool, budget - pickPrice, onlySize, 3).map(best=>{
+      const pv = picks.map(p=>({name:p.name, price:p.price, energy:num(p.energy), protein:num(p.protein),
+                                fat:num(p.fat), carb:num(p.carb), category:p.category, base:p.base||p.name}));
+      const combo = [...pv, ...best.combo];
+      const sum = k => pv.reduce((s,d)=>s+(d[k]||0),0);
+      return {combo, price:best.price+pickPrice, diff:budget-(best.price+pickPrice),
+              energy:best.energy+sum('energy'), protein:best.protein+sum('protein'),
+              fat:best.fat+sum('fat'), carb:best.carb+sum('carb'),
+              balanced:combo.some(d=>MAIN.includes(d.category)),
+              hasCarb:combo.some(d=>CARB.includes(d.category))};
+    });
   }
   let body;
   if(!cs.length){
-    body='<div class="combo-empty">¥'+budget+'以内の組み合わせが見つからなかった〜！予算を上げてみて</div>';
+    body='<div class="combo-empty">¥'+budget+'以内の組み合わせが見つからなかった〜！予算や指定を変えてみて</div>';
   } else {
     body=cs.map((c,i)=>{
       const names=c.combo.map(d=>d.name+'('+d.category+')').join(' + ');
@@ -582,9 +585,10 @@ function comboHtml(dishes, budget, onlySize, chosen){
         '<div class="combo-badge">'+b+'</div></div>';
     }).join('');
   }
-  const sztag = onlySize ? '（🍚'+onlySize+'固定）' : '';
-  const dtag = chosen ? '（🍰'+chosen.name+'込み）' : '';
-  return '<div class="sec-h">🎫 予算 ¥<span class="bv">'+budget+'</span> スレスレ最適化 TOP3'+sztag+dtag+'</div>'+body;
+  const sztag = onlySize ? '（🍚'+onlySize+'）' : '';
+  const rtag = rice ? '（'+rice.name+'）' : '';
+  const dtag = dessert ? '（🍰'+dessert.name+'）' : '';
+  return '<div class="sec-h">🎫 予算 ¥<span class="bv">'+budget+'</span> スレスレ最適化 TOP3'+sztag+rtag+dtag+'</div>'+body;
 }
 
 DATA.shops.forEach((s) => {
@@ -625,7 +629,8 @@ function applyHalf(dishes){
     sizes: Object.fromEntries(Object.entries(d.sizes || {}).map(([k, v]) => [k, Math.max(0, Math.round(v / 2))])),
   }));
 }
-const dessertSel = {};  // "shopkey-dayidx" → 選択中のデザート名（各日ごとに保持）
+const riceSel = {};     // "shopkey-dayidx" → 選択中のご飯もの variant名
+const dessertSel = {};  // "shopkey-dayidx" → 選択中のデザート名
 function renderAll(){
   const budget = parseInt(document.getElementById('budget').value) || 740;
   const half = document.getElementById('half').checked;
@@ -635,28 +640,39 @@ function renderAll(){
     if (!el) return;
     const dishes = half ? applyHalf(dy.dishes) : dy.dishes;
     const key = s.key + '-' + i;
+    // ご飯もの(丼/麺/ご飯)をサイズ展開（サイズ固定があればそれに従う）して選択肢に
+    const riceVariants = expandSizes(dishes.filter((d) => CARB.includes(d.category)), onlySize);
+    const riceName = riceSel[key] || '';
+    const rice = riceName ? riceVariants.find((v) => v.name === riceName) : null;
+    let rselHtml = '';
+    if (riceVariants.length) {
+      rselHtml = '<div class="dsel-bar">🍚 ご飯もの: <select class="rsel" data-key="' + key + '">' +
+        '<option value="">おまかせ</option>' +
+        riceVariants.map((v) => '<option value="' + v.name + '"' + (v.name === riceName ? ' selected' : '') + '>' + v.name + ' ¥' + v.price + '</option>').join('') +
+        '</select></div>';
+    }
     const dayDesserts = dishes.filter((d) => d.category === 'デザート');
-    const chosenName = dessertSel[key] || '';
+    const desName = dessertSel[key] || '';
+    const dessert = desName ? dayDesserts.find((d) => d.name === desName) : null;
     let dselHtml = '';
     if (dayDesserts.length) {
       dselHtml = '<div class="dsel-bar">🍰 デザート: <select class="dsel" data-key="' + key + '">' +
         '<option value="">なし</option>' +
-        dayDesserts.map((d) => '<option value="' + d.name + '"' + (d.name === chosenName ? ' selected' : '') + '>' + d.name + ' ¥' + d.price + '</option>').join('') +
+        dayDesserts.map((d) => '<option value="' + d.name + '"' + (d.name === desName ? ' selected' : '') + '>' + d.name + ' ¥' + d.price + '</option>').join('') +
         '</select></div>';
     }
-    const chosen = chosenName ? dayDesserts.find((d) => d.name === chosenName) : null;
     el.innerHTML = (half ? '<div class="half-on">🉐 半額week適用中！ 全品50%OFFで計算中</div>' : '') +
-      nutritionTable(dishes) + dselHtml + comboHtml(dishes, budget, onlySize, chosen);
+      nutritionTable(dishes) + rselHtml + dselHtml + comboHtml(dishes, budget, onlySize, rice, dessert);
   }));
 }
 document.getElementById('budget').addEventListener('input', renderAll);
 document.getElementById('half').addEventListener('change', renderAll);
 document.getElementById('rsize').addEventListener('change', renderAll);
 document.addEventListener('change', (e) => {
-  if (e.target.classList && e.target.classList.contains('dsel')) {
-    dessertSel[e.target.dataset.key] = e.target.value;
-    renderAll();
-  }
+  const t = e.target;
+  if (!t.classList) return;
+  if (t.classList.contains('rsel')) { riceSel[t.dataset.key] = t.value; renderAll(); }
+  else if (t.classList.contains('dsel')) { dessertSel[t.dataset.key] = t.value; renderAll(); }
 });
 document.querySelectorAll('.budget-bar .preset').forEach((p) => {
   p.onclick = () => { document.getElementById('budget').value = p.dataset.v; renderAll(); };
