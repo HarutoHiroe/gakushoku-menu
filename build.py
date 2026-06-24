@@ -447,6 +447,13 @@ TEMPLATE = r"""<!DOCTYPE html>
     <option value="中">中で固定</option>
     <option value="大">大で固定</option>
   </select></span>
+  <span class="size-sel">🎯<select id="omode">
+    <option value="">予算スレスレ</option>
+    <option value="protein">💪高タンパク</option>
+    <option value="lowcal">🥗低カロリー</option>
+    <option value="cospa">💰コスパ</option>
+    <option value="pfc">⚖️PFCバランス</option>
+  </select></span>
 </div>
 <div class="tabs" id="tabs"></div>
 <div id="panels"></div>
@@ -463,6 +470,7 @@ document.querySelector('.updated').textContent = '取得: ' + DATA.updated;
 const SIZE_ORDER = {"小":0,"並":1,"中":2,"大":3};
 const SIZE_RICE_DELTA = {"小":[-100,-24],"並":[0,0],"中":[0,0],"大":[150,36]};
 const MAIN = ["主菜","丼","麺"], CARB = ["丼","麺","ご飯"], SOLO_NG = ["汁物","小鉢","サラダ","ご飯","デザート"];
+const MODE_LABEL = {protein:'💪高タンパク', lowcal:'🥗低カロリー', cospa:'💰コスパ', pfc:'⚖️PFCバランス'};
 
 function num(x){ return (x==null)?null:Number(x); }
 
@@ -525,7 +533,7 @@ function* combinations(arr,r){
     idx[i]++; for(let j=i+1;j<r;j++) idx[j]=idx[j-1]+1;
   }
 }
-function suggestCombos(dishes, budget, onlySize, topN=3, maxItems=4){
+function suggestCombos(dishes, budget, onlySize, mode, topN=3, maxItems=4){
   const v = expandSizes(dishes, onlySize), all=[];
   for(let r=1;r<=Math.min(v.length,maxItems);r++){
     for(const combo of combinations(v,r)){
@@ -544,10 +552,18 @@ function suggestCombos(dishes, budget, onlySize, topN=3, maxItems=4){
       all.push({combo,price,diff:budget-price,energy,protein,fat,carb,balanced,hasCarb});
     }
   }
-  all.sort((a,b)=> a.diff-b.diff || (b.balanced-a.balanced) || (b.energy-a.energy));
+  // モード別スコア（全部「大きいほど良い」に正規化）。同点は予算スレスレ→主菜あり
+  const score = (c)=>{
+    if(mode==='protein') return c.protein;            // 高タンパク
+    if(mode==='lowcal')  return -c.energy;            // 低カロリー
+    if(mode==='cospa')   return c.price>0 ? (c.energy + c.protein*4)/c.price : 0;  // コスパ
+    if(mode==='pfc')     return c.protein*4 - c.fat;  // PFCバランス(タンパク多・脂質少)
+    return -c.diff;                                   // 予算スレスレ(デフォルト)
+  };
+  all.sort((a,b)=> score(b)-score(a) || a.diff-b.diff || (b.balanced-a.balanced));
   return all.slice(0,topN);
 }
-function comboHtml(dishes, budget, onlySize, rice, dessert){
+function comboHtml(dishes, budget, onlySize, rice, dessert, mode){
   if(!dishes.length) return '';
   // 選んだご飯もの/デザートを先打ち確定 → 残予算で残りを最適化（指定は反映しつつ最適化も保つ）
   const picks = [rice, dessert].filter(Boolean);
@@ -559,7 +575,7 @@ function comboHtml(dishes, budget, onlySize, rice, dessert){
   if(pickPrice > budget){
     cs = [];
   } else {
-    cs = suggestCombos(pool, budget - pickPrice, onlySize, 3).map(best=>{
+    cs = suggestCombos(pool, budget - pickPrice, onlySize, mode, 3).map(best=>{
       const pv = picks.map(p=>({name:p.name, price:p.price, energy:num(p.energy), protein:num(p.protein),
                                 fat:num(p.fat), carb:num(p.carb), category:p.category, base:p.base||p.name}));
       const combo = [...pv, ...best.combo];
@@ -588,7 +604,8 @@ function comboHtml(dishes, budget, onlySize, rice, dessert){
   const sztag = onlySize ? '（🍚'+onlySize+'）' : '';
   const rtag = rice ? '（'+rice.name+'）' : '';
   const dtag = dessert ? '（🍰'+dessert.name+'）' : '';
-  return '<div class="sec-h">🎫 予算 ¥<span class="bv">'+budget+'</span> スレスレ最適化 TOP3'+sztag+rtag+dtag+'</div>'+body;
+  const mlabel = MODE_LABEL[mode] || '🎫 予算スレスレ';
+  return '<div class="sec-h">'+mlabel+'最適化 TOP3（¥<span class="bv">'+budget+'</span>）'+sztag+rtag+dtag+'</div>'+body;
 }
 
 DATA.shops.forEach((s) => {
@@ -635,6 +652,7 @@ function renderAll(){
   const budget = parseInt(document.getElementById('budget').value) || 740;
   const half = document.getElementById('half').checked;
   const onlySize = document.getElementById('rsize').value || null;
+  const mode = document.getElementById('omode').value || '';
   DATA.shops.forEach((s) => s.days.forEach((dy, i) => {
     const el = document.getElementById('dyn-' + s.key + '-' + i);
     if (!el) return;
@@ -662,12 +680,13 @@ function renderAll(){
         '</select></div>';
     }
     el.innerHTML = (half ? '<div class="half-on">🉐 半額week適用中！ 全品50%OFFで計算中</div>' : '') +
-      nutritionTable(dishes) + rselHtml + dselHtml + comboHtml(dishes, budget, onlySize, rice, dessert);
+      nutritionTable(dishes) + rselHtml + dselHtml + comboHtml(dishes, budget, onlySize, rice, dessert, mode);
   }));
 }
 document.getElementById('budget').addEventListener('input', renderAll);
 document.getElementById('half').addEventListener('change', renderAll);
 document.getElementById('rsize').addEventListener('change', renderAll);
+document.getElementById('omode').addEventListener('change', renderAll);
 document.addEventListener('change', (e) => {
   const t = e.target;
   if (!t.classList) return;
