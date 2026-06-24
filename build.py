@@ -549,6 +549,7 @@ function suggestCombos(dishes, budget, onlySize, mode, topN=3, maxItems=4){
       const carb=combo.reduce((s,d)=>s+(d.carb||0),0);
       const balanced=combo.some(d=>MAIN.includes(d.category));
       const hasCarb=combo.some(d=>CARB.includes(d.category));
+      if((mode==='lowcal'||mode==='cospa') && !balanced) continue;  // 低カロ/コスパは主菜あり必須（味噌汁だけ/ライスだけ等の極端を防ぐ）
       all.push({combo,price,diff:budget-price,energy,protein,fat,carb,balanced,hasCarb});
     }
   }
