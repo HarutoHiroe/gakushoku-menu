@@ -556,7 +556,7 @@ function suggestCombos(dishes, budget, onlySize, mode, topN=3, maxItems=4){
   // モード別スコア（全部「大きいほど良い」に正規化）。同点は予算スレスレ→主菜あり
   const score = (c)=>{
     if(mode==='protein') return c.protein;            // 高タンパク
-    if(mode==='lowcal')  return -c.energy;            // 低カロリー
+    if(mode==='lowcal')  return c.energy>0 ? c.protein/c.energy : 0;  // 低カロリー高タンパク(kcalあたりタンパク質 最大)
     if(mode==='cospa')   return c.price>0 ? (c.energy + c.protein*4)/c.price : 0;  // コスパ
     if(mode==='pfc')     return c.protein*4 - c.fat;  // PFCバランス(タンパク多・脂質少)
     return -c.diff;                                   // 予算スレスレ(デフォルト)
