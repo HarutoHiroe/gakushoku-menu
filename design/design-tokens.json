@@ -1,0 +1,26 @@
+{
+  "$meta": {
+    "name": "design-tokens",
+    "role": "Source of Truth (SSoT). このファイルが正本。説明用 md は要約に過ぎない。",
+    "note": "値は出発点。プロジェクトに合わせて自由に書き換えてOK。ハードコードせず必ずここを参照する。"
+  },
+  "color": {
+    "bg":     { "base": "#0f1115", "subtle": "#1a1d24", "elevated": "#22262f" },
+    "fg":     { "base": "#e6e8eb", "muted": "#9aa0a6", "subtle": "#6b7280" },
+    "accent": { "base": "#4f9eff", "hover": "#3b82f6", "active": "#2563eb" },
+    "border": { "base": "#2a2e37", "strong": "#3a3f4a" },
+    "danger": { "base": "#ef4444", "hover": "#dc2626" },
+    "success":{ "base": "#22c55e", "hover": "#16a34a" }
+  },
+  "space": {
+    "0": "0", "1": "4px", "2": "8px", "3": "12px",
+    "4": "16px", "6": "24px", "8": "32px", "12": "48px"
+  },
+  "radius": { "sm": "6px", "md": "10px", "lg": "16px", "full": "9999px" },
+  "font": {
+    "family": { "base": "system-ui, sans-serif", "mono": "ui-monospace, monospace" },
+    "size":   { "xs": "12px", "sm": "14px", "base": "16px", "lg": "20px", "xl": "28px" },
+    "weight": { "regular": "400", "medium": "500", "bold": "700" },
+    "line":   { "tight": "1.2", "base": "1.5", "relaxed": "1.7" }
+  }
+}
